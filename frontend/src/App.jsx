@@ -1,36 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import UploadComponent from './components/UploadComponent.jsx';
+import DocumentList from './components/DocumentList.jsx';
 import { downloadDocument, listDocuments, uploadDocument } from './services/documents.js';
 import './styles.css';
-
-function formatFileSize(size) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(value) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
 
 export default function App() {
   const [ownerId, setOwnerId] = useState('demo-user');
   const [ownerInput, setOwnerInput] = useState('demo-user');
   const [documents, setDocuments] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const [error, setError] = useState('');
-  const fileInput = useRef(null);
 
   useEffect(() => {
     let isCurrent = true;
     const abortController = new AbortController();
 
     setLoading(true);
+    setDocuments([]);
     setError('');
 
     listDocuments(ownerId, { signal: abortController.signal })
@@ -52,6 +40,7 @@ export default function App() {
 
   async function handleIdentitySubmit(event) {
     event.preventDefault();
+    if (uploading || downloadingId) return;
     const nextOwner = ownerInput.trim();
     if (!nextOwner) {
       setError('Informe um identificador de usuário.');
@@ -60,23 +49,17 @@ export default function App() {
     setOwnerId(nextOwner);
   }
 
-  async function handleUpload(event) {
-    event.preventDefault();
-    if (!selectedFile) {
-      setError('Selecione um arquivo para enviar.');
-      return;
-    }
-
+  async function handleUpload(file) {
     setUploading(true);
     setError('');
     try {
-      await uploadDocument(ownerId, selectedFile);
-      setSelectedFile(null);
-      if (fileInput.current) fileInput.current.value = '';
+      await uploadDocument(ownerId, file);
       const result = await listDocuments(ownerId);
       setDocuments(result.documents);
+      return true;
     } catch (requestError) {
       setError(requestError.message);
+      return false;
     } finally {
       setUploading(false);
     }
@@ -113,10 +96,11 @@ export default function App() {
             id="owner-id"
             value={ownerInput}
             maxLength={120}
+            disabled={uploading || downloadingId !== null}
             onChange={(event) => setOwnerInput(event.target.value)}
             aria-label="Identificador do usuário"
           />
-          <button className="identity-submit" type="submit">Abrir</button>
+          <button className="identity-submit" type="submit" disabled={uploading || downloadingId !== null}>Abrir</button>
         </form>
       </header>
 
@@ -131,70 +115,16 @@ export default function App() {
           </span>
         </div>
 
-        <section className="upload-panel" aria-labelledby="upload-heading">
-          <div className="upload-copy">
-            <span className="upload-icon" aria-hidden="true">↑</span>
-            <div>
-              <h2 id="upload-heading">Adicionar documento</h2>
-              <p>Os arquivos ficam armazenados neste dispositivo.</p>
-            </div>
-          </div>
-          <form className="upload-form" onSubmit={handleUpload}>
-            <label className="file-picker" htmlFor="document-file">
-              <span>{selectedFile ? selectedFile.name : 'Escolher arquivo'}</span>
-              <input
-                ref={fileInput}
-                id="document-file"
-                type="file"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
-              />
-            </label>
-            <button className="upload-button" type="submit" disabled={uploading || !selectedFile}>
-              {uploading ? 'Enviando...' : 'Enviar arquivo'}
-            </button>
-          </form>
-        </section>
+        <UploadComponent key={ownerId} onUpload={handleUpload} uploading={uploading} />
 
         {error && <p className="error-message" role="alert">{error}</p>}
 
-        <section className="documents-section" aria-labelledby="documents-heading">
-          <div className="section-heading">
-            <h2 id="documents-heading">Seus arquivos</h2>
-            <span>Ordenados pelos mais recentes</span>
-          </div>
-
-          {loading ? (
-            <p className="list-message">Carregando documentos...</p>
-          ) : documents.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-symbol" aria-hidden="true">—</span>
-              <h3>Nenhum documento por aqui</h3>
-              <p>Os arquivos enviados aparecerão nesta lista.</p>
-            </div>
-          ) : (
-            <div className="document-list">
-              {documents.map((document) => (
-                <article className="document-row" key={document.id}>
-                  <div className="file-type" aria-hidden="true">DOC</div>
-                  <div className="document-details">
-                    <h3 title={document.originalName}>{document.originalName}</h3>
-                    <p>{formatFileSize(document.size)} <span aria-hidden="true">·</span> {formatDate(document.uploadedAt)}</p>
-                  </div>
-                  <button
-                    className="download-button"
-                    type="button"
-                    title={`Baixar ${document.originalName}`}
-                    aria-label={`Baixar ${document.originalName}`}
-                    disabled={downloadingId === document.id}
-                    onClick={() => handleDownload(document)}
-                  >
-                    {downloadingId === document.id ? 'Baixando...' : 'Baixar ↓'}
-                  </button>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+        <DocumentList
+          documents={documents}
+          loading={loading}
+          downloadingId={downloadingId}
+          onDownload={handleDownload}
+        />
       </main>
       <footer className="footer-note">ARQUIVO LOCAL <span>•</span> DOCUMENTOS DE {ownerId.toUpperCase()}</footer>
     </div>

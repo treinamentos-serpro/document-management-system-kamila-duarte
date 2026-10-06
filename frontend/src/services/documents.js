@@ -5,29 +5,33 @@ async function readResponse(response) {
   throw new Error(body?.error?.message || 'Não foi possível concluir a operação.');
 }
 
-export async function listDocuments(ownerId, options = {}) {
-  const response = await fetch('/api/documents', {
+async function request(path, ownerId, options = {}) {
+  const response = await fetch(`/api${path}`, {
+    ...options,
     headers: { 'X-User-Id': ownerId },
+  });
+  return readResponse(response);
+}
+
+export async function listDocuments(ownerId, options = {}) {
+  const response = await request('/documents', ownerId, {
     signal: options.signal,
   });
-  return (await readResponse(response)).json();
+  return response.json();
 }
 
 export async function uploadDocument(ownerId, file) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch('/api/upload', {
+  const response = await request('/upload', ownerId, {
     method: 'POST',
-    headers: { 'X-User-Id': ownerId },
     body: formData,
   });
-  return (await readResponse(response)).json();
+  return response.json();
 }
 
 export async function downloadDocument(ownerId, documentId) {
-  const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}/download`, {
-    headers: { 'X-User-Id': ownerId },
-  });
-  return (await readResponse(response)).blob();
+  const response = await request(`/documents/${encodeURIComponent(documentId)}/download`, ownerId);
+  return response.blob();
 }
